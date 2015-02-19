@@ -231,6 +231,20 @@ class Acceptor
   var acceptedround: int;
   var acceptedval:   int;
 
+
+  constructor Init(interface, Interface, group: Group, id: int)
+  {
+    this.interface:= interface;
+    this.group    := group;
+    this.slot_ID  := id;
+
+    this.round    := 0;
+    this.largest  := 0;
+    this.value    := value;
+    this.promised := new map<int, bool>;
+    this.count    := 0;
+  }
+
   method Prepare(source: int, round: int, value: int)
   {
     // is the round newer than our promise?
@@ -248,7 +262,7 @@ class Acceptor
       this.promise       := round;
       this.acceptedround := round;
       this.acceptedval   := value;
-      this.group.Learn(round, value);
+      this.group.Learn(slot_ID, round, value);
     }
   }
 }
@@ -256,6 +270,19 @@ class Acceptor
 class Learner
 {
   var interface: Interface; // singelton
+
+  constructor Init(interface, Interface, group: Group, id: int)
+  {
+    this.interface:= interface;
+    this.group    := group;
+    this.slot_ID  := id;
+
+    this.round    := 0;
+    this.largest  := 0;
+    this.value    := value;
+    this.promised := new map<int, bool>;
+    this.count    := 0;
+  }
 
   method Learn(round: int, value: int)
   {
