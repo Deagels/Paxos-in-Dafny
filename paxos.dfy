@@ -2,8 +2,10 @@
 |*                                                                            *|
 |*                                   PAXOS                                    *|
 |*                                                                            *|
-|*                                                                            *|
 \**************************************--**************************************/
+// author: Joakim Hagen
+// modified: 2015-02-19
+// columnwidth: 80
 
 class Interface // singleton
 {
@@ -103,19 +105,28 @@ class Group
   var interface: Interface; // singelton
   var ID:        int; // this group's group_ID
 
-  var proposers: array<StateMachine>;
-  var acceptors: array<StateMachine>;
-  var learners:  array<StateMachine>;
-  // TODO rename one of these sets
+  var proposers: array<int>; // array of machine ID's
+  var acceptors: array<int>;
+  var learners:  array<int>;
+
   var local_proposers: map<int, Proposer>; // key is slot_ID
   var local_acceptors: map<int, Acceptor>;
   var local_learners:  map<int, Learner>;
 
   constructor Init()
   {
-    this.proposers := new array<StateMachine>;
-    this.acceptors := new array<StateMachine>;
-    this.learners  := new array<StateMachine>;
+    this.proposers := new array<int>;
+    this.acceptors := new array<int>;
+    this.learners  := new array<int>;
+
+    this.local_proposers := new map<int, Proposer>;
+    this.local_acceptors := new map<int, Acceptor>;
+    this.local_learners  := new map<int, Learner>;
+  }
+
+  method AddLocalProposer(pro: Proposer)
+  {
+    this.proposers[pro.slot_ID] := pro;
   }
 
   method Prepare(slot_ID: int, round: int, value: int)
@@ -164,19 +175,20 @@ class Proposer
   var round:     int; // current round
   var largest:   int; // largerst encountered round from acceptors
   var value:     int; // own value or value of acceptor with largest round
-  var promised:  map<StateMachine, bool>; // bitmap of answered promises
+  var promised:  map<int, bool>; // bitmap of answered promises
   var count:     int; // amount of responses received
 
-  constructor Init(id: int, group: Group, value: int)
+  constructor Init(interface, Interface, group: Group, id: int)
   {
-    this.slot_ID  := id;
+    this.interface:= interface;
     this.group    := group;
+    this.slot_ID  := id;
+
     this.round    := 0;
     this.largest  := 0;
     this.value    := value;
-    this.promised := new map<StateMachine, bool>;
+    this.promised := new map<int, bool>;
     this.count    := 0;
-    group.Prepare(round, value, pro); // broadcast to all acceptors in group
   }
 
   /* can be called by a malicious proposer?
@@ -189,8 +201,8 @@ class Proposer
       ==> this.value == acceptedval;
   {
     // not first response from acceptor?
-    if (this.promised[sender]) { return; }
-    this.promised[sender] := true;
+    if (this.promised[source_ID]) { return; }
+    this.promised[source_ID] := true;
     this.count := this.count + 1; // +1 promise
 
     // were there any prior proposals?
@@ -201,9 +213,10 @@ class Proposer
 
     // TODO: don't call Accept before all Prepares are sent!
     // got required majority of promises?
-    if (count > group.acceptors.Length/2) {
+    if (this.count > this.group.acceptors.Length/2) {
       // TODO: store state
-      this.interface.Accept(round, value);
+      this.interface.Accept(source_ID, this.group.ID, this.slot_ID,
+        round, value);
     }
   }
 }
@@ -217,7 +230,6 @@ class Acceptor
   var promise :      int;
   var acceptedround: int;
   var acceptedval:   int;
-  var learners:      map<int, StateMachine>;
 
   method Prepare(source: int, round: int, value: int)
   {
@@ -230,7 +242,6 @@ class Acceptor
   }
 
   method Accept(round: int, value: int)
-    requires 2 < 3;
   {
     // is the round at least as new as the promise
     if (round >= this.promise && round != this.acceptedround) {
@@ -248,6 +259,6 @@ class Learner
 
   method Learn(round: int, value: int)
   {
-    interface.EventLearn(round, value);
+    this.interface.EventLearn(round, value);
   }
 }
