@@ -4,26 +4,60 @@
 |*                                                                            *|
 \**************************************--**************************************/
 // author: Joakim Hagen
-// modified: 2015-02-19
+// modified: 2015-02-21
 // columnwidth: 80
 
 class Interface // singleton
 {
+  var others:     map<int, Interface>;
+  var dropper:    Dropper;
+
   var machine_ID: int; // A unique pseudorandom ID
   var groups:     map<int, Group>; // groups we participate in
 
+  constructor Init(id: int)
+  {
+    this.others     := map[];
+    this.dropper    := new Dropper;
+    this.machine_ID := id;
+    this.groups     := map[];
+  }
+
   // INSIDE
   method Promise(dest_ID: int, group_ID: int, slot_ID: int,
-    value: int) {}
+    round: int, acceptedround: int, acceptedval: int) {
+    // ====== Dafny trickery ======
+    if (this.dropper.Proceed()) {
+      this.others[dest_ID].Recieve_Promise(dest_ID, group_ID, slot_ID,
+        round, acceptedround, acceptedval);
+    }//============================
+    // here is where the client program should generate a package and send to
+    // another machine
+  }
 
   method Prepare(dest_ID: int, group_ID: int, slot_ID: int,
-    round: int, value: int) {}
+    round: int, value: int) {
+    if (this.dropper.Proceed()) {
+      this.others[dest_ID].Recieve_Prepare(dest_ID, group_ID, slot_ID,
+        round, value);
+    }
+  }
 
   method Accept(dest_ID: int, group_ID: int, slot_ID: int,
-    round: int, value: int) {}
+    round: int, value: int) {
+    if (this.dropper.Proceed()) {
+      this.others[dest_ID].Recieve_Accept(dest_ID, group_ID, slot_ID,
+        round, value);
+    }
+  }
 
   method Learn(dest_ID: int, group_ID: int, slot_ID: int,
-    round: int, value: int) {}
+    round: int, value: int) {
+    if (this.dropper.Proceed()) {
+      this.others[dest_ID].Recieve_Learn(dest_ID, group_ID, slot_ID,
+        round, value);
+    }
+  }
 
   // OUTSIDE
   method Recieve_Propose(source_ID: int, group_ID: int, slot_ID: int,
@@ -32,18 +66,18 @@ class Interface // singleton
     if (group_ID in this.groups) {
       var local := this.groups[group_ID].local_proposers;
       if (slot_ID in local) {
-        local[slot_ID].Propose(0, value);
+        local[slot_ID].Propose(source_ID, value);
       } // TODO: else create new slot??
     }
   }
 
   method Recieve_Promise(source_ID: int, group_ID: int, slot_ID: int,
-    round: int, value: int) {
+    round: int, acceptedround: int, acceptedval: int) {
     // Are we a member of this group & have a proposer for this slot?
     if (group_ID in this.groups) {
       var local := this.groups[group_ID].local_proposers;
       if (slot_ID in local) {
-        local[slot_ID].Promise(round, value);
+        local[slot_ID].Promise(source_ID, round, acceptedround, acceptedval);
       }
     }
   }
@@ -65,7 +99,7 @@ class Interface // singleton
     if (group_ID in this.groups) {
       var local := this.groups[group_ID].local_acceptors;
       if (slot_ID in local) {
-        local[slot_ID].Accept(round, value);
+        local[slot_ID].Accept(source_ID, round, value);
       }
     }
   }
@@ -76,11 +110,10 @@ class Interface // singleton
     if (group_ID in this.groups) {
       var local := this.groups[group_ID].local_learners;
       if (slot_ID in local) {
-        local[slot_ID].Learn(round, value);
+        local[slot_ID].Learn(source_ID, round, value);
       }
     }
   }
-
 
   /* Store
    * This method is to be overridden by the client application in the effort
@@ -119,14 +152,14 @@ class Group
     this.acceptors := new array<int>;
     this.learners  := new array<int>;
 
-    this.local_proposers := new map<int, Proposer>;
-    this.local_acceptors := new map<int, Acceptor>;
-    this.local_learners  := new map<int, Learner>;
+    this.local_proposers := map[];
+    this.local_acceptors := map[];
+    this.local_learners  := map[];
   }
 
   method AddLocalProposer(pro: Proposer)
   {
-    this.proposers[pro.slot_ID] := pro;
+    this.local_proposers[pro.slot_ID := pro];
   }
 
   method Prepare(slot_ID: int, round: int, value: int)
@@ -178,7 +211,7 @@ class Proposer
   var promised:  map<int, bool>; // bitmap of answered promises
   var count:     int; // amount of responses received
 
-  constructor Init(interface, Interface, group: Group, id: int)
+  constructor Init(interface: Interface, group: Group, id: int)
   {
     this.interface:= interface;
     this.group    := group;
@@ -187,26 +220,28 @@ class Proposer
     this.round    := 0;
     this.largest  := 0;
     this.value    := value;
-    this.promised := new map<int, bool>;
+    this.promised := map[];
     this.count    := 0;
   }
+
+  method Propose(source_ID: int, value: int) {}
 
   /* can be called by a malicious proposer?
    * The Proposer receives a response from an Acceptor where the current round
    * is the highest encountered.
    */
-  method Promise(source_ID: int, acceptedround: int, acceptedval: int)
+  method Promise(source_ID: int, round: int, acceptedround: int,
+    acceptedval: int)
     requires acceptedround <= this.round;
-    ensures  acceptedround != null && this.largest < acceptedround
-      ==> this.value == acceptedval;
+    ensures  this.largest < acceptedround ==> this.value == acceptedval;
   {
     // not first response from acceptor?
     if (this.promised[source_ID]) { return; }
-    this.promised[source_ID] := true;
+    this.promised[source_ID := true];
     this.count := this.count + 1; // +1 promise
 
     // were there any prior proposals?
-    if (acceptedround != null && this.largest < acceptedround) {
+    if (this.largest < acceptedround) {
       this.value   := acceptedval;
       this.largest := acceptedround;
     }
@@ -232,30 +267,28 @@ class Acceptor
   var acceptedval:   int;
 
 
-  constructor Init(interface, Interface, group: Group, id: int)
+  constructor Init(interface: Interface, group: Group, id: int)
   {
-    this.interface:= interface;
-    this.group    := group;
-    this.slot_ID  := id;
+    this.interface     := interface;
+    this.group         := group;
+    this.slot_ID       := id;
 
-    this.round    := 0;
-    this.largest  := 0;
-    this.value    := value;
-    this.promised := new map<int, bool>;
-    this.count    := 0;
+    this.promise       := 0;
+    this.acceptedround := 0;
+    this.acceptedval   := 0;
   }
 
-  method Prepare(source: int, round: int, value: int)
+  method Prepare(source_ID: int, round: int, value: int)
   {
-    // is the round newer than our promise?
-    if (round > this.promise) {
+    // is the round equal or newer than our promise?
+    if (round >= this.promise) {
       this.promise := round;
-      this.interface.Promise(source, this.group, this.slot_ID,
-        this.acceptedround, this.acceptedval);
+      this.interface.Promise(source_ID, this.group.ID, this.slot_ID,
+        round, this.acceptedround, this.acceptedval);
     }
   }
 
-  method Accept(round: int, value: int)
+  method Accept(source_ID: int, round: int, value: int)
   {
     // is the round at least as new as the promise
     if (round >= this.promise && round != this.acceptedround) {
@@ -271,21 +304,22 @@ class Learner
 {
   var interface: Interface; // singelton
 
-  constructor Init(interface, Interface, group: Group, id: int)
+  constructor Init(interface: Interface, group: Group, id: int)
   {
     this.interface:= interface;
-    this.group    := group;
-    this.slot_ID  := id;
-
-    this.round    := 0;
-    this.largest  := 0;
-    this.value    := value;
-    this.promised := new map<int, bool>;
-    this.count    := 0;
   }
 
-  method Learn(round: int, value: int)
+  method Learn(source_ID: int, round: int, value: int)
   {
     this.interface.EventLearn(round, value);
   }
+}
+
+class Dropper
+{
+  var droprate: int;
+
+  method Send(val: int) {}
+
+  function Proceed(): bool { true }
 }
