@@ -25,36 +25,47 @@ class Interface // singleton
 
   // INSIDE
   method Promise(dest_ID: int, group_ID: int, slot_ID: int,
-    round: int, acceptedround: int, acceptedval: int) {
-    // ====== Dafny trickery ======
-    if (this.dropper.Proceed()) {
-      this.others[dest_ID].Recieve_Promise(dest_ID, group_ID, slot_ID,
+    round: int, acceptedround: int, acceptedval: int)
+    // no elements in others are null
+    requires forall k :: k in this.others ==> this.others[k] != null;
+  {
+    if (dest_ID in this.others) {
+      this.others[dest_ID].Recieve_Promise(this.machine_ID, group_ID, slot_ID,
         round, acceptedround, acceptedval);
-    }//============================
+    }
     // here is where the client program should generate a package and send to
     // another machine
   }
 
   method Prepare(dest_ID: int, group_ID: int, slot_ID: int,
-    round: int, value: int) {
-    if (this.dropper.Proceed()) {
-      this.others[dest_ID].Recieve_Prepare(dest_ID, group_ID, slot_ID,
+    round: int, value: int)
+    // no elements in others are null
+    requires forall k :: k in this.others ==> this.others[k] != null;
+  {
+    if (dest_ID in this.others) {
+      this.others[dest_ID].Recieve_Prepare(this.machine_ID, group_ID, slot_ID,
         round, value);
     }
   }
 
   method Accept(dest_ID: int, group_ID: int, slot_ID: int,
-    round: int, value: int) {
-    if (this.dropper.Proceed()) {
-      this.others[dest_ID].Recieve_Accept(dest_ID, group_ID, slot_ID,
+    round: int, value: int)
+    // no elements in others are null
+    requires forall k :: k in this.others ==> this.others[k] != null;
+  {
+    if (dest_ID in this.others) {
+      this.others[dest_ID].Recieve_Accept(this.machine_ID, group_ID, slot_ID,
         round, value);
     }
   }
 
   method Learn(dest_ID: int, group_ID: int, slot_ID: int,
-    round: int, value: int) {
-    if (this.dropper.Proceed()) {
-      this.others[dest_ID].Recieve_Learn(dest_ID, group_ID, slot_ID,
+    round: int, value: int)
+    // no elements in others are null
+    requires forall k :: k in this.others ==> this.others[k] != null;
+  {
+    if (dest_ID in this.others) {
+      this.others[dest_ID].Recieve_Learn(this.machine_ID, group_ID, slot_ID,
         round, value);
     }
   }
@@ -146,8 +157,13 @@ class Group
   var local_acceptors: map<int, Acceptor>;
   var local_learners:  map<int, Learner>;
 
-  constructor Init()
+  constructor Init(interface: Interface)
+    requires interface != null;
+    modifies this;
+    ensures  this.interface != null;
   {
+    this.interface := interface;
+
     this.proposers := new array<int>;
     this.acceptors := new array<int>;
     this.learners  := new array<int>;
@@ -158,11 +174,14 @@ class Group
   }
 
   method AddLocalProposer(pro: Proposer)
+    requires this.local_proposers != null;
+    modifies this;
   {
-    this.local_proposers[pro.slot_ID := pro];
+    this.local_proposers := this.local_proposers[pro.slot_ID := pro];
   }
 
   method Prepare(slot_ID: int, round: int, value: int)
+    requires interface != null;
   {
     var i := 0;
     var n := this.acceptors.Length;
@@ -175,6 +194,7 @@ class Group
   }
 
   method Accept(slot_ID: int, round: int, value: int)
+    requires interface != null;
   {
     var i := 0;
     var n := this.acceptors.Length;
@@ -187,6 +207,7 @@ class Group
   }
 
   method Learn(slot_ID: int, round: int, value: int)
+    requires interface != null;
   {
     var i := 0;
     var n := this.learners.Length;
@@ -212,6 +233,9 @@ class Proposer
   var count:     int; // amount of responses received
 
   constructor Init(interface: Interface, group: Group, id: int)
+    requires interface != null;
+    modifies this;
+    ensures  this.interface != null;
   {
     this.interface:= interface;
     this.group    := group;
@@ -232,13 +256,15 @@ class Proposer
    */
   method Promise(source_ID: int, round: int, acceptedround: int,
     acceptedval: int)
-    requires acceptedround <= this.round;
+    requires source_ID in this.promised && this.promised[source_ID] != null
+      && acceptedround <= round <= this.round;
+    modifies this;
     ensures  this.largest < acceptedround ==> this.value == acceptedval;
   {
     // not first response from acceptor?
     if (this.promised[source_ID]) { return; }
-    this.promised[source_ID := true];
-    this.count := this.count + 1; // +1 promise
+    this.promised := this.promised[source_ID := true];
+    this.count    := this.count + 1; // +1 promise
 
     // were there any prior proposals?
     if (this.largest < acceptedround) {
@@ -268,6 +294,9 @@ class Acceptor
 
 
   constructor Init(interface: Interface, group: Group, id: int)
+    requires interface != null;
+    modifies this;
+    ensures  this.interface != null;
   {
     this.interface     := interface;
     this.group         := group;
@@ -279,6 +308,9 @@ class Acceptor
   }
 
   method Prepare(source_ID: int, round: int, value: int)
+    requires this.interface != null;
+    modifies this;
+    ensures this.promise >= round;
   {
     // is the round equal or newer than our promise?
     if (round >= this.promise) {
@@ -289,6 +321,8 @@ class Acceptor
   }
 
   method Accept(source_ID: int, round: int, value: int)
+    requires this.group != null;
+    modifies this;
   {
     // is the round at least as new as the promise
     if (round >= this.promise && round != this.acceptedround) {
@@ -305,11 +339,15 @@ class Learner
   var interface: Interface; // singelton
 
   constructor Init(interface: Interface, group: Group, id: int)
+    requires interface != null;
+    modifies this;
+    ensures  this.interface != null;
   {
-    this.interface:= interface;
+    this.interface := interface;
   }
 
   method Learn(source_ID: int, round: int, value: int)
+    requires this.interface != null;
   {
     this.interface.EventLearn(round, value);
   }
