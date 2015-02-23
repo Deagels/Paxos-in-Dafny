@@ -12,7 +12,7 @@ class Interface // singleton
   var others:     map<int, Interface>;
   var dropper:    Dropper;
 
-  var machine_ID: int; // A unique pseudorandom ID
+  var machine_ID: int; // A unique pseudo-random ID
   var groups:     map<int, Group>; // groups we participate in
 
   constructor Init(id: int)
@@ -182,7 +182,7 @@ class StateMachine {}
 
 class Group
 {
-  var interface: Interface; // singelton
+  var interface: Interface; // singleton
   var ID:        int; // this group's group_ID
 
   var proposers: array<int>; // array of machine ID's
@@ -193,17 +193,19 @@ class Group
   var local_acceptors: map<int, Acceptor>;
   var local_learners:  map<int, Learner>;
 
-  constructor Init(interface: Interface)
-    requires interface != null;
+  constructor Init(intf: Interface)
+    requires intf != null;
     modifies this;
-    ensures  this.interface != null;
+    ensures  this.interface != null && this.proposers != null
+      && this.acceptors != null && this.learners != null;
   {
-    this.interface := interface;
+    this.interface := intf;
 
     this.proposers := new array<int>;
     this.acceptors := new array<int>;
     this.learners  := new array<int>;
 
+    // TODO: regarding maps can't be null, do they need initialization?
     this.local_proposers := map[];
     this.local_acceptors := map[];
     this.local_learners  := map[];
@@ -212,6 +214,9 @@ class Group
   method AddLocalProposer(pro: Proposer)
     requires pro != null;
     modifies this;
+    // we leave important objects in this unchanged
+    ensures  this.interface != null && this.proposers != null
+      && this.acceptors != null && this.learners != null;
   {
     this.local_proposers := this.local_proposers[pro.slot_ID := pro];
   }
@@ -258,30 +263,30 @@ class Group
 
 class Proposer
 {
-  var interface: Interface; // singelton
+  var interface: Interface; // singleton
   var group:     Group; // list participating members
   var slot_ID:   int; // unique slot identifier
 
   var round:     int; // current round
-  var largest:   int; // largerst encountered round from acceptors
+  var largest:   int; // largest encountered round from acceptors
   var value:     int; // own value or value of acceptor with largest round
   var promised:  map<int, bool>; // bitmap of answered promises
   var count:     int; // amount of responses received
 
-  constructor Init(interface: Interface, group: Group, id: int)
-    requires interface != null;
+  constructor Init(intf: Interface, grp: Group, id: int)
+    requires intf != null && grp != null;
     modifies this;
-    ensures  this.interface != null;
+    ensures  this.interface != null && this.group != null;
   {
-    this.interface:= interface;
-    this.group    := group;
-    this.slot_ID  := id;
+    this.interface := intf;
+    this.group     := grp;
+    this.slot_ID   := id;
 
-    this.round    := 0;
-    this.largest  := 0;
-    this.value    := value;
-    this.promised := map[];
-    this.count    := 0;
+    this.round     := 0;
+    this.largest   := 0;
+    this.value     := value;
+    this.promised  := map[];
+    this.count     := 0;
   }
 
   method Propose(source_ID: int, value: int) {}
@@ -292,11 +297,15 @@ class Proposer
    */
   method Promise(source_ID: int, round: int, acceptedround: int,
     acceptedval: int)
-    requires source_ID in this.promised && this.interface != null
-      && this.group != null && this.group.acceptors != null
+    requires this.interface != null && this.group != null
+      && this.group.acceptors != null
       && acceptedround <= round <= this.round;
     modifies this;
-    ensures  this.largest < acceptedround ==> this.value == acceptedval;
+    // TODO: what about when we receive double answers?
+    // we leave important objects in this unchanged
+    ensures  this.interface != null && this.group != null
+      && this.group.acceptors != null
+      && this.largest < acceptedround ==> this.value == acceptedval;
   {
     // not first response from acceptor?
     if (this.promised[source_ID]) { return; }
@@ -321,7 +330,7 @@ class Proposer
 
 class Acceptor
 {
-  var interface:     Interface; // singelton
+  var interface:     Interface; // singleton
   var group:         Group; // list participating members
   var slot_ID:       int; // unique slot identifier
 
@@ -330,13 +339,14 @@ class Acceptor
   var acceptedval:   int;
 
 
-  constructor Init(interface: Interface, group: Group, id: int)
-    requires interface != null;
+  constructor Init(intf: Interface, grp: Group, id: int)
+    requires intf != null && grp != null;
     modifies this;
-    ensures  this.interface != null;
+    // we leave important objects in this unchanged
+    ensures  this.interface != null && this.group != null;
   {
-    this.interface     := interface;
-    this.group         := group;
+    this.interface     := intf;
+    this.group         := grp;
     this.slot_ID       := id;
 
     this.promise       := 0;
@@ -347,7 +357,9 @@ class Acceptor
   method Prepare(source_ID: int, round: int, value: int)
     requires this.interface != null && this.group != null;
     modifies this;
-    ensures this.promise >= round;
+    // we leave important objects in this unchanged
+    ensures  this.interface != null && this.group != null
+      && this.promise >= round;
   {
     // is the round equal or newer than our promise?
     if (round >= this.promise) {
@@ -358,8 +370,11 @@ class Acceptor
   }
 
   method Accept(source_ID: int, round: int, value: int)
-    requires this.group != null;
+    requires this.interface != null && this.group != null;
     modifies this;
+    // we leave important objects in this unchanged
+    ensures  this.interface != null && this.group != null
+      && round >= this.promise ==> this.promise == round;
   {
     // is the round at least as new as the promise
     if (round >= this.promise && round != this.acceptedround) {
@@ -373,14 +388,14 @@ class Acceptor
 
 class Learner
 {
-  var interface: Interface; // singelton
+  var interface: Interface; // singleton
 
-  constructor Init(interface: Interface, group: Group, id: int)
-    requires interface != null;
+  constructor Init(intf: Interface)
+    requires intf != null;
     modifies this;
     ensures  this.interface != null;
   {
-    this.interface := interface;
+    this.interface := intf;
   }
 
   method Learn(source_ID: int, round: int, value: int)
