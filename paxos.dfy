@@ -4,7 +4,7 @@
 |*                                                                            *|
 \**************************************--**************************************/
 // author: Joakim Hagen
-// modified: 2015-02-21
+// modified: 2015-02-23
 // columnwidth: 80
 
 class Interface // singleton
@@ -75,15 +75,23 @@ class Interface // singleton
     value: int) {
     // Are we a member of this group & have a proposer for this slot?
     if (group_ID in this.groups) {
+      assert this.groups[group_ID] != null;
       var local := this.groups[group_ID].local_proposers;
       if (slot_ID in local) {
+        assert local[slot_ID] != null;
         local[slot_ID].Propose(source_ID, value);
       } // TODO: else create new slot??
     }
   }
 
   method Recieve_Promise(source_ID: int, group_ID: int, slot_ID: int,
-    round: int, acceptedround: int, acceptedval: int) {
+    round: int, acceptedround: int, acceptedval: int)
+    // no elements in groups or local_proposers are null
+    requires forall k :: k in this.groups ==> (
+      this.groups[k] != null && forall l :: l in this.groups[k].local_proposers
+      ==> this.groups[k].local_proposers[l] != null
+    );
+  {
     // Are we a member of this group & have a proposer for this slot?
     if (group_ID in this.groups) {
       var local := this.groups[group_ID].local_proposers;
@@ -97,8 +105,10 @@ class Interface // singleton
     round: int, value: int) {
     // Are we a member of this group & have an acceptor for this slot?
     if (group_ID in this.groups) {
+      assert this.groups[group_ID] != null;
       var local := this.groups[group_ID].local_acceptors;
       if (slot_ID in local) {
+        assert local[slot_ID] != null;
         local[slot_ID].Prepare(source_ID, round, value);
       }
     }
@@ -108,15 +118,23 @@ class Interface // singleton
     round: int, value: int) {
     // Are we a member of this group & have an acceptor for this slot?
     if (group_ID in this.groups) {
+      assert this.groups[group_ID] != null;
       var local := this.groups[group_ID].local_acceptors;
       if (slot_ID in local) {
+        assert local[slot_ID] != null;
         local[slot_ID].Accept(source_ID, round, value);
       }
     }
   }
 
   method Recieve_Learn(source_ID: int, group_ID: int, slot_ID: int,
-    round: int, value: int) {
+    round: int, value: int)
+    // no elements in groups or local_learners are null
+    requires forall k :: k in this.groups ==> (
+      this.groups[k] != null && forall l :: l in this.groups[k].local_learners
+      ==> this.groups[k].local_learners[l] != null
+    );
+  {
     // Are we a member of this group & have a learner for this slot?
     if (group_ID in this.groups) {
       var local := this.groups[group_ID].local_learners;
@@ -174,13 +192,14 @@ class Group
   }
 
   method AddLocalProposer(pro: Proposer)
+    requires pro != null;
     modifies this;
   {
     this.local_proposers := this.local_proposers[pro.slot_ID := pro];
   }
 
   method Prepare(slot_ID: int, round: int, value: int)
-    requires interface != null;
+    requires this.interface != null && this.acceptors != null;
   {
     var i := 0;
     var n := this.acceptors.Length;
@@ -193,7 +212,7 @@ class Group
   }
 
   method Accept(slot_ID: int, round: int, value: int)
-    requires interface != null;
+    requires this.interface != null && this.acceptors != null;
   {
     var i := 0;
     var n := this.acceptors.Length;
@@ -206,7 +225,7 @@ class Group
   }
 
   method Learn(slot_ID: int, round: int, value: int)
-    requires interface != null;
+    requires this.interface != null && this.learners != null;
   {
     var i := 0;
     var n := this.learners.Length;
@@ -255,7 +274,8 @@ class Proposer
    */
   method Promise(source_ID: int, round: int, acceptedround: int,
     acceptedval: int)
-    requires source_ID in this.promised
+    requires source_ID in this.promised && this.interface != null
+      && this.group != null && this.group.acceptors != null
       && acceptedround <= round <= this.round;
     modifies this;
     ensures  this.largest < acceptedround ==> this.value == acceptedval;
@@ -307,7 +327,7 @@ class Acceptor
   }
 
   method Prepare(source_ID: int, round: int, value: int)
-    requires this.interface != null;
+    requires this.interface != null && this.group != null;
     modifies this;
     ensures this.promise >= round;
   {
