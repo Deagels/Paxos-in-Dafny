@@ -174,7 +174,6 @@ class Group
   }
 
   method AddLocalProposer(pro: Proposer)
-    requires this.local_proposers != null;
     modifies this;
   {
     this.local_proposers := this.local_proposers[pro.slot_ID := pro];
@@ -256,7 +255,7 @@ class Proposer
    */
   method Promise(source_ID: int, round: int, acceptedround: int,
     acceptedval: int)
-    requires source_ID in this.promised && this.promised[source_ID] != null
+    requires source_ID in this.promised
       && acceptedround <= round <= this.round;
     modifies this;
     ensures  this.largest < acceptedround ==> this.value == acceptedval;
