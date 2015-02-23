@@ -72,7 +72,13 @@ class Interface // singleton
 
   // OUTSIDE
   method Recieve_Propose(source_ID: int, group_ID: int, slot_ID: int,
-    value: int) {
+    value: int)
+    // no elements in groups or local_proposers are null
+    requires forall k :: k in this.groups ==> (
+      this.groups[k] != null && forall l :: l in this.groups[k].local_proposers
+      ==> this.groups[k].local_proposers[l] != null
+    );
+  {
     // Are we a member of this group & have a proposer for this slot?
     if (group_ID in this.groups) {
       assert this.groups[group_ID] != null;
@@ -102,7 +108,13 @@ class Interface // singleton
   }
 
   method Recieve_Prepare(source_ID: int, group_ID: int, slot_ID: int,
-    round: int, value: int) {
+    round: int, value: int)
+    // no elements in groups or local_acceptors are null
+    requires forall k :: k in this.groups ==> (
+      this.groups[k] != null && forall l :: l in this.groups[k].local_acceptors
+      ==> this.groups[k].local_acceptors[l] != null
+    );
+  {
     // Are we a member of this group & have an acceptor for this slot?
     if (group_ID in this.groups) {
       assert this.groups[group_ID] != null;
@@ -115,7 +127,13 @@ class Interface // singleton
   }
 
   method Recieve_Accept(source_ID: int, group_ID: int, slot_ID: int,
-    round: int, value: int) {
+    round: int, value: int)
+    // no elements in groups or local_acceptors are null
+    requires forall k :: k in this.groups ==> (
+      this.groups[k] != null && forall l :: l in this.groups[k].local_acceptors
+      ==> this.groups[k].local_acceptors[l] != null
+    );
+  {
     // Are we a member of this group & have an acceptor for this slot?
     if (group_ID in this.groups) {
       assert this.groups[group_ID] != null;
