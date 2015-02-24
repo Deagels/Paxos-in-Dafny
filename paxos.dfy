@@ -4,21 +4,66 @@
 |*                                                                            *|
 \**************************************--**************************************/
 // author: Joakim Hagen
-// modified: 2015-02-23
+// modified: 2015-02-24
 // columnwidth: 80
+
+class DummyNetwork
+{
+  var interfaces: map<int, Interface>;
+  var droprate:   int;
+
+  method Promise(dest_ID: int, source_ID: int, group_ID: int, slot_ID: int,
+    round: int, acceptedround: int, acceptedval: int)
+    requires valid(this);
+  {
+    if (dest_ID in this.interfaces) {
+      assert valid(this.interfaces[dest_ID]);
+      this.interfaces[dest_ID].Recieve_Promise(source_ID, group_ID, slot_ID,
+        round, acceptedround, acceptedval);
+    }
+  }
+
+  method Prepare(dest_ID: int, source_ID: int, group_ID: int, slot_ID: int,
+    round: int, value: int)
+    requires valid(this);
+  {
+    if (dest_ID in this.interfaces) {
+      this.interfaces[dest_ID].Recieve_Prepare(source_ID, group_ID, slot_ID,
+        round, value);
+    }
+  }
+
+  method Accept(dest_ID: int, source_ID: int, group_ID: int, slot_ID: int,
+    round: int, value: int)
+    requires valid(this);
+  {
+    if (dest_ID in this.interfaces) {
+      this.interfaces[dest_ID].Recieve_Accept(source_ID, group_ID, slot_ID,
+        round, value);
+    }
+  }
+
+  method Learn(dest_ID: int, source_ID: int, group_ID: int, slot_ID: int,
+    round: int, value: int)
+    requires valid(this);
+  {
+    if (dest_ID in this.interfaces) {
+      this.interfaces[dest_ID].Recieve_Learn(source_ID, group_ID, slot_ID,
+        round, value);
+    }
+  }
+}
 
 class Interface // singleton
 {
-  var others:     map<int, Interface>;
-  var dropper:    Dropper;
-
+  var net:        DummyNetwork;
   var machine_ID: int; // A unique pseudo-random ID
   var groups:     map<int, Group>; // groups we participate in
 
   constructor Init(id: int)
+    ensures valid(this);
   {
-    this.others     := map[];
-    this.dropper    := new Dropper;
+    this.net        := new DummyNetwork;
     this.machine_ID := id;
     this.groups     := map[];
   }
@@ -26,46 +71,40 @@ class Interface // singleton
   // INSIDE
   method Promise(dest_ID: int, group_ID: int, slot_ID: int,
     round: int, acceptedround: int, acceptedval: int)
-    // no elements in others are null
-    requires forall k :: k in this.others ==> this.others[k] != null;
+    requires valid(this);
   {
-    if (dest_ID in this.others) {
-      this.others[dest_ID].Recieve_Promise(this.machine_ID, group_ID, slot_ID,
-        round, acceptedround, acceptedval);
-    }
+    this.net.Promise(dest_ID, this.machine_ID, group_ID, slot_ID,
+      round, acceptedround, acceptedval);
     // here is where the client program should generate a package and send to
     // another machine
   }
 
   method Prepare(dest_ID: int, group_ID: int, slot_ID: int,
     round: int, value: int)
-    // no elements in others are null
-    requires forall k :: k in this.others ==> this.others[k] != null;
+    requires valid(this);
   {
-    if (dest_ID in this.others) {
-      this.others[dest_ID].Recieve_Prepare(this.machine_ID, group_ID, slot_ID,
+    if (dest_ID in this.allIntfs) {
+      this.net.Prepare(dest_ID, this.machine_ID, group_ID, slot_ID,
         round, value);
     }
   }
 
   method Accept(dest_ID: int, group_ID: int, slot_ID: int,
     round: int, value: int)
-    // no elements in others are null
-    requires forall k :: k in this.others ==> this.others[k] != null;
+    requires valid(this);
   {
-    if (dest_ID in this.others) {
-      this.others[dest_ID].Recieve_Accept(this.machine_ID, group_ID, slot_ID,
+    if (dest_ID in this.allIntfs) {
+      this.net.Accept(dest_ID, this.machine_ID, group_ID, slot_ID,
         round, value);
     }
   }
 
   method Learn(dest_ID: int, group_ID: int, slot_ID: int,
     round: int, value: int)
-    // no elements in others are null
-    requires forall k :: k in this.others ==> this.others[k] != null;
+    requires valid(this);
   {
-    if (dest_ID in this.others) {
-      this.others[dest_ID].Recieve_Learn(this.machine_ID, group_ID, slot_ID,
+    if (dest_ID in this.allIntfs) {
+      this.net.Learn(dest_ID, this.machine_ID, group_ID, slot_ID,
         round, value);
     }
   }
@@ -73,11 +112,7 @@ class Interface // singleton
   // OUTSIDE
   method Recieve_Propose(source_ID: int, group_ID: int, slot_ID: int,
     value: int)
-    // no elements in groups or local_proposers are null
-    requires forall k :: k in this.groups ==> (
-      this.groups[k] != null && forall l :: l in this.groups[k].local_proposers
-      ==> this.groups[k].local_proposers[l] != null
-    );
+    requires valid(this);
   {
     // Are we a member of this group & have a proposer for this slot?
     if (group_ID in this.groups) {
@@ -92,11 +127,7 @@ class Interface // singleton
 
   method Recieve_Promise(source_ID: int, group_ID: int, slot_ID: int,
     round: int, acceptedround: int, acceptedval: int)
-    // no elements in groups or local_proposers are null
-    requires forall k :: k in this.groups ==> (
-      this.groups[k] != null && forall l :: l in this.groups[k].local_proposers
-      ==> this.groups[k].local_proposers[l] != null
-    );
+    requires valid(this);
   {
     // Are we a member of this group & have a proposer for this slot?
     if (group_ID in this.groups) {
@@ -109,11 +140,7 @@ class Interface // singleton
 
   method Recieve_Prepare(source_ID: int, group_ID: int, slot_ID: int,
     round: int, value: int)
-    // no elements in groups or local_acceptors are null
-    requires forall k :: k in this.groups ==> (
-      this.groups[k] != null && forall l :: l in this.groups[k].local_acceptors
-      ==> this.groups[k].local_acceptors[l] != null
-    );
+    requires valid(this);
   {
     // Are we a member of this group & have an acceptor for this slot?
     if (group_ID in this.groups) {
@@ -128,11 +155,7 @@ class Interface // singleton
 
   method Recieve_Accept(source_ID: int, group_ID: int, slot_ID: int,
     round: int, value: int)
-    // no elements in groups or local_acceptors are null
-    requires forall k :: k in this.groups ==> (
-      this.groups[k] != null && forall l :: l in this.groups[k].local_acceptors
-      ==> this.groups[k].local_acceptors[l] != null
-    );
+    requires valid(this);
   {
     // Are we a member of this group & have an acceptor for this slot?
     if (group_ID in this.groups) {
@@ -147,11 +170,7 @@ class Interface // singleton
 
   method Recieve_Learn(source_ID: int, group_ID: int, slot_ID: int,
     round: int, value: int)
-    // no elements in groups or local_learners are null
-    requires forall k :: k in this.groups ==> (
-      this.groups[k] != null && forall l :: l in this.groups[k].local_learners
-      ==> this.groups[k].local_learners[l] != null
-    );
+    requires valid(this);
   {
     // Are we a member of this group & have a learner for this slot?
     if (group_ID in this.groups) {
@@ -169,6 +188,24 @@ class Interface // singleton
   method Store(value: int) {}
 
   method EventLearn(round: int, value: int) {}
+
+  // non-recursive validation predicate for testing mutually linked objects
+  static predicate valid(intf: Interface)
+    reads intf;
+  {
+    intf != null
+    // for all linked interfaces
+    && forall k :: k in intf.allIntfs ==> (
+      // their list is equal to this
+      intf.allIntfs[k].allIntfs == intf.allIntfs
+      // all groups are valid
+      && forall g :: g in intf.allIntfs[k].groups ==>
+      Group.valid(intf.allIntfs[k].groups[g])
+    )
+    // this intf is in allIntfs
+    && intf.machine_ID in intf.allIntfs
+    && intf.allIntfs[intf.machine_ID] == intf
+  }
 }
 
 // TODO: reduce arguments machine_ID, group_ID, slot_ID, round, value to a
@@ -194,10 +231,9 @@ class Group
   var local_learners:  map<int, Learner>;
 
   constructor Init(intf: Interface)
-    requires intf != null;
+    requires Interface.valid(intf);
     modifies this;
-    ensures  this.interface != null && this.proposers != null
-      && this.acceptors != null && this.learners != null;
+    ensures  valid(this) && this.interface == intf;
   {
     this.interface := intf;
 
@@ -212,17 +248,16 @@ class Group
   }
 
   method AddLocalProposer(pro: Proposer)
-    requires pro != null;
+    requires valid(this) && Interface.valid(this.interface) && pro != null;
     modifies this;
     // we leave important objects in this unchanged
-    ensures  this.interface != null && this.proposers != null
-      && this.acceptors != null && this.learners != null;
+    ensures  valid(this) && Interface.valid(this.interface);
   {
     this.local_proposers := this.local_proposers[pro.slot_ID := pro];
   }
 
   method Prepare(slot_ID: int, round: int, value: int)
-    requires this.interface != null && this.acceptors != null;
+    requires valid(this) && Interface.valid(this.interface);
   {
     var i := 0;
     var n := this.acceptors.Length;
@@ -235,7 +270,7 @@ class Group
   }
 
   method Accept(slot_ID: int, round: int, value: int)
-    requires this.interface != null && this.acceptors != null;
+    requires valid(this) && Interface.valid(this.interface);
   {
     var i := 0;
     var n := this.acceptors.Length;
@@ -248,7 +283,8 @@ class Group
   }
 
   method Learn(slot_ID: int, round: int, value: int)
-    requires this.interface != null && this.learners != null;
+    requires valid(this)
+    && Interface.valid(this.interface);
   {
     var i := 0;
     var n := this.learners.Length;
@@ -258,6 +294,16 @@ class Group
       this.interface.Learn(learners[i], this.ID, slot_ID, round, value);
       i := i + 1;
     }
+  }
+
+  static predicate valid(grp: Group)
+    reads grp;
+  {
+    grp != null && grp.interface != null && grp.proposers != null
+    && grp.acceptors != null && grp.learners != null
+    && forall p :: p in grp.local_proposers ==> grp.local_proposers[p] != null
+    && forall a :: a in grp.local_acceptors ==> grp.local_acceptors[a] != null
+    && forall l :: l in grp.local_learners  ==> grp.local_learners[l]  != null
   }
 }
 
@@ -274,9 +320,9 @@ class Proposer
   var count:     int; // amount of responses received
 
   constructor Init(intf: Interface, grp: Group, id: int)
-    requires intf != null && grp != null;
+    requires Interface.valid(intf) && Group.valid(grp);
     modifies this;
-    ensures  this.interface != null && this.group != null;
+    ensures  this.interface == intf && this.group == grp;
   {
     this.interface := intf;
     this.group     := grp;
@@ -297,14 +343,12 @@ class Proposer
    */
   method Promise(source_ID: int, round: int, acceptedround: int,
     acceptedval: int)
-    requires this.interface != null && this.group != null
-      && this.group.acceptors != null
+    requires Interface.valid(this.interface) && Group.valid(this.group)
       && acceptedround <= round <= this.round;
     modifies this;
     // TODO: what about when we receive double answers?
     // we leave important objects in this unchanged
-    ensures  this.interface != null && this.group != null
-      && this.group.acceptors != null
+    ensures  Interface.valid(this.interface) && Group.valid(this.group)
       && this.largest < acceptedround ==> this.value == acceptedval;
   {
     // not first response from acceptor?
@@ -340,10 +384,9 @@ class Acceptor
 
 
   constructor Init(intf: Interface, grp: Group, id: int)
-    requires intf != null && grp != null;
+    requires Interface.valid(intf) && Group.valid(grp);
     modifies this;
-    // we leave important objects in this unchanged
-    ensures  this.interface != null && this.group != null;
+    ensures  this.interface == intf && this.group == grp;
   {
     this.interface     := intf;
     this.group         := grp;
@@ -355,10 +398,10 @@ class Acceptor
   }
 
   method Prepare(source_ID: int, round: int, value: int)
-    requires this.interface != null && this.group != null;
+    requires Interface.valid(this.interface) && Group.valid(this.group);
     modifies this;
     // we leave important objects in this unchanged
-    ensures  this.interface != null && this.group != null
+    ensures  Interface.valid(this.interface) && Group.valid(this.group)
       && this.promise >= round;
   {
     // is the round equal or newer than our promise?
@@ -370,11 +413,12 @@ class Acceptor
   }
 
   method Accept(source_ID: int, round: int, value: int)
-    requires this.interface != null && this.group != null;
+    requires Interface.valid(this.interface) && Group.valid(this.group);
     modifies this;
     // we leave important objects in this unchanged
-    ensures  this.interface != null && this.group != null
-      && round >= this.promise ==> this.promise == round;
+    ensures  Interface.valid(this.interface) && Group.valid(this.group)
+      && (round >= this.promise && round != this.acceptedround) ==>
+      this.promise == round;
   {
     // is the round at least as new as the promise
     if (round >= this.promise && round != this.acceptedround) {
@@ -391,25 +435,18 @@ class Learner
   var interface: Interface; // singleton
 
   constructor Init(intf: Interface)
-    requires intf != null;
+    requires Interface.valid(intf);
     modifies this;
-    ensures  this.interface != null;
+    ensures  this.interface == intf;
   {
     this.interface := intf;
   }
 
   method Learn(source_ID: int, round: int, value: int)
-    requires this.interface != null;
+    requires Interface.valid(this.interface);
   {
     this.interface.EventLearn(round, value);
   }
 }
 
-class Dropper
-{
-  var droprate: int;
 
-  method Send(val: int) {}
-
-  function Proceed(): bool { true }
-}
