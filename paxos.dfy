@@ -4,7 +4,7 @@
 |*                                                                            *|
 \**************************************--**************************************/
 // author: Joakim Hagen
-// modified: 2015-02-24
+// modified: 2015-02-25
 // columnwidth: 80
 
 class DummyNetwork
@@ -17,7 +17,6 @@ class DummyNetwork
     requires valid(this);
   {
     if (dest_ID in this.interfaces) {
-      assert valid(this.interfaces[dest_ID]);
       this.interfaces[dest_ID].Recieve_Promise(source_ID, group_ID, slot_ID,
         round, acceptedround, acceptedval);
     }
@@ -52,6 +51,14 @@ class DummyNetwork
         round, value);
     }
   }
+
+  static predicate valid(net: DummyNetwork)
+    reads net;
+  {
+    net != null
+    // for all interfaces
+    && forall k :: k in net.interfaces ==> Interface.valid(net.interfaces[k])
+  }
 }
 
 class Interface // singleton
@@ -60,10 +67,11 @@ class Interface // singleton
   var machine_ID: int; // A unique pseudo-random ID
   var groups:     map<int, Group>; // groups we participate in
 
-  constructor Init(id: int)
-    ensures valid(this);
+  constructor Init(net: DummyNetwork, id: int)
+    requires DummyNetwork.valid(net);
+    ensures  this.net == net;
   {
-    this.net        := new DummyNetwork;
+    this.net        := net;
     this.machine_ID := id;
     this.groups     := map[];
   }
@@ -71,48 +79,40 @@ class Interface // singleton
   // INSIDE
   method Promise(dest_ID: int, group_ID: int, slot_ID: int,
     round: int, acceptedround: int, acceptedval: int)
-    requires valid(this);
+    requires DummyNetwork.valid(this.net);
   {
     this.net.Promise(dest_ID, this.machine_ID, group_ID, slot_ID,
       round, acceptedround, acceptedval);
-    // here is where the client program should generate a package and send to
-    // another machine
   }
 
   method Prepare(dest_ID: int, group_ID: int, slot_ID: int,
     round: int, value: int)
-    requires valid(this);
+    requires DummyNetwork.valid(this.net);
   {
-    if (dest_ID in this.allIntfs) {
-      this.net.Prepare(dest_ID, this.machine_ID, group_ID, slot_ID,
-        round, value);
-    }
+    this.net.Prepare(dest_ID, this.machine_ID, group_ID, slot_ID,
+      round, value);
   }
 
   method Accept(dest_ID: int, group_ID: int, slot_ID: int,
     round: int, value: int)
-    requires valid(this);
+    requires DummyNetwork.valid(this.net);
   {
-    if (dest_ID in this.allIntfs) {
-      this.net.Accept(dest_ID, this.machine_ID, group_ID, slot_ID,
-        round, value);
-    }
+    this.net.Accept(dest_ID, this.machine_ID, group_ID, slot_ID,
+      round, value);
   }
 
   method Learn(dest_ID: int, group_ID: int, slot_ID: int,
     round: int, value: int)
-    requires valid(this);
+    requires DummyNetwork.valid(this.net);
   {
-    if (dest_ID in this.allIntfs) {
-      this.net.Learn(dest_ID, this.machine_ID, group_ID, slot_ID,
-        round, value);
-    }
+    this.net.Learn(dest_ID, this.machine_ID, group_ID, slot_ID,
+      round, value);
   }
 
   // OUTSIDE
   method Recieve_Propose(source_ID: int, group_ID: int, slot_ID: int,
     value: int)
-    requires valid(this);
+    requires DummyNetwork.valid(this.net);
   {
     // Are we a member of this group & have a proposer for this slot?
     if (group_ID in this.groups) {
@@ -127,7 +127,7 @@ class Interface // singleton
 
   method Recieve_Promise(source_ID: int, group_ID: int, slot_ID: int,
     round: int, acceptedround: int, acceptedval: int)
-    requires valid(this);
+    requires DummyNetwork.valid(this.net);
   {
     // Are we a member of this group & have a proposer for this slot?
     if (group_ID in this.groups) {
@@ -140,7 +140,7 @@ class Interface // singleton
 
   method Recieve_Prepare(source_ID: int, group_ID: int, slot_ID: int,
     round: int, value: int)
-    requires valid(this);
+    requires DummyNetwork.valid(this.net);
   {
     // Are we a member of this group & have an acceptor for this slot?
     if (group_ID in this.groups) {
@@ -155,7 +155,7 @@ class Interface // singleton
 
   method Recieve_Accept(source_ID: int, group_ID: int, slot_ID: int,
     round: int, value: int)
-    requires valid(this);
+    requires DummyNetwork.valid(this.net);
   {
     // Are we a member of this group & have an acceptor for this slot?
     if (group_ID in this.groups) {
@@ -170,7 +170,7 @@ class Interface // singleton
 
   method Recieve_Learn(source_ID: int, group_ID: int, slot_ID: int,
     round: int, value: int)
-    requires valid(this);
+    requires DummyNetwork.valid(this.net);
   {
     // Are we a member of this group & have a learner for this slot?
     if (group_ID in this.groups) {
@@ -194,17 +194,9 @@ class Interface // singleton
     reads intf;
   {
     intf != null
-    // for all linked interfaces
-    && forall k :: k in intf.allIntfs ==> (
-      // their list is equal to this
-      intf.allIntfs[k].allIntfs == intf.allIntfs
-      // all groups are valid
-      && forall g :: g in intf.allIntfs[k].groups ==>
-      Group.valid(intf.allIntfs[k].groups[g])
-    )
-    // this intf is in allIntfs
-    && intf.machine_ID in intf.allIntfs
-    && intf.allIntfs[intf.machine_ID] == intf
+    && intf.net != null
+    // all groups are valid
+    && forall g :: g in intf.groups ==> Group.valid(intf.groups[g])
   }
 }
 
