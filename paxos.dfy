@@ -4,13 +4,12 @@
 |*                                                                            *|
 \**************************************--**************************************/
 // author: Joakim Hagen
-// modified: 2015-02-26
+// modified: 2015-02-27
 // columnwidth: 80
 
 class DummyNetwork
 {
   var interfaces: map<int, Interface>;
-  var droprate:   int;
 
   method Promise(dest_ID: int, source_ID: int, group_ID: int, slot_ID: int,
     round: int, acceptedround: int, acceptedval: int)
@@ -283,24 +282,29 @@ class Group
       i := i + 1;
     }
   }
-
+/*
+  static function readMap(m: int->Proposer, i: int) : set<Proposer>
+  {
+    if i in m then {m[i]} + readMap(m,i+1) else {}
+  }
+*/
   static predicate valid(grp: Group)
     reads grp;
+    reads set uniqueVar | uniqueVar in grp.local_proposers :: grp.local_proposers[uniqueVar];
   {
-    grp != null && grp.interface != null && grp.proposers != null
-    && grp.acceptors != null && grp.learners != null
-    && forall p :: p in grp.local_proposers ==> (
-      grp.local_proposers[p] != null && grp.local_proposers[p].group == grp
-      && grp.local_proposers[p].interface == grp.interface
-    )
-    && forall a :: a in grp.local_acceptors ==> (
-      grp.local_acceptors[a] != null && grp.local_acceptors[a].group == grp
-      && grp.local_acceptors[a].interface == grp.interface
-    )
-    && forall l :: l in grp.local_learners  ==> (
-      grp.local_learners[l]  != null
-      && grp.local_learners[l].interface == grp.interface
-    )
+    grp != null && grp.interface != null
+    && grp.proposers != null
+    && grp.acceptors != null
+    && grp.learners  != null
+
+    && forall p :: p in grp.local_proposers ==>
+      Proposer.valid(grp, p)
+
+    && forall a :: a in grp.local_acceptors ==>
+      Acceptor.valid(grp.local_acceptors[a], grp)
+
+    && forall l :: l in grp.local_learners ==>
+      Learner.valid(grp.local_learners[l], grp)
   }
 }
 
@@ -380,6 +384,15 @@ class Proposer
         round, value);
     }
   }
+
+  static predicate valid(grp: Group, i: int)
+    requires grp != null;
+    reads grp, grp.local_proposers[i];
+  {
+    grp.local_proposers[i] != null
+    && grp.local_proposers[i].group == grp
+    && grp.local_proposers[i].interface == grp.interface
+  }
 }
 
 class Acceptor
@@ -409,8 +422,34 @@ class Acceptor
     this.promise       := 0;
     this.acceptedround := 0;
     this.acceptedval   := 0;
+
+    assert Group.valid(grp);
+    assert Group.valid(this.group);
+    assert this.group == grp;
+    assert this.interface == grp.interface;
+
+    assert forall a :: a in grp.local_acceptors ==>
+      grp.local_acceptors[a] != null;
+
+    assert forall a :: a in grp.local_acceptors ==>
+      grp.local_acceptors[a].group == grp;
+
+    assert forall a :: a in grp.local_acceptors ==>
+      grp.local_acceptors[a].interface == grp.interface;
+
     // add self to local_acceptors
     grp.local_acceptors := grp.local_acceptors[id := this];
+
+    assert grp.local_acceptors[id] == this;
+
+    assert forall a :: a in grp.local_acceptors ==>
+      grp.local_acceptors[a] != null;
+
+    assert forall a :: a in grp.local_acceptors ==>
+      grp.local_acceptors[a].group == grp;
+
+    assert forall a :: a in grp.local_acceptors ==>
+      grp.local_acceptors[a].interface == grp.interface;
   }
 
   method Prepare(source_ID: int, round: int, value: int)
@@ -459,6 +498,13 @@ class Acceptor
       this.group.Learn(slot_ID, round, value);
     }
   }
+
+  static predicate valid(acp: Acceptor, grp: Group)
+    requires grp != null;
+    reads acp, grp;
+  {
+    acp != null && acp.group == grp && acp.interface == grp.interface
+  }
 }
 
 class Learner
@@ -483,6 +529,13 @@ class Learner
     requires Interface.valid(this.interface);
   {
     this.interface.EventLearn(round, value);
+  }
+
+  static predicate valid(lrn: Learner, grp: Group)
+    requires grp != null;
+    reads lrn, grp;
+  {
+    lrn != null && lrn.interface == grp.interface
   }
 }
 
