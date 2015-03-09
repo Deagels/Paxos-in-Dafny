@@ -4,7 +4,7 @@
 |*                                                                            *|
 \**************************************--**************************************/
 // author: Joakim Hagen
-// modified: 2015-02-27
+// modified: 2015-03-09
 // columnwidth: 80
 
 class DummyNetwork
@@ -199,7 +199,10 @@ class Interface // singleton
   predicate valid()
     reads this;
 	reads set g | g in this.groups :: this.groups[g];
-    reads flatten(set x | x in this.groups && this.groups[x] != null :: this.groups[x].valid.reads());
+	//reads set x | x in this.groups && this.groups[x] != null :: this.groups[x].valid;
+	//reads set x | x in this.groups && this.groups[x] != null :: this.groups[x].valid.reads;
+    //reads flatten(set x | x in this.groups && this.groups[x] != null :: this.groups[x].valid.reads());
+    reads flatten(set x | x in this.groups && this.groups[x] != null :: this.groups[x].read());
   {
     this.net != null
     // all groups are valid
@@ -290,11 +293,10 @@ class Group
       i := i + 1;
     }
   }
-  /*
-  function getSet() : set<object>
-  { (set x: object | x in local_proposers)
-  + set x: object | x in local_acceptors
-  + set x: object | x in local_learners }*/
+  
+  function read() : set<object>
+    reads this, this.valid.reads();
+  { this.valid.reads() }
 
   predicate valid()
     reads this,
