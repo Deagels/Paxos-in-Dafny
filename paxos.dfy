@@ -190,27 +190,20 @@ class Interface // singleton
   method EventLearn(round: int, value: int) {}
 
   function getGroups() : set<Group>
+    reads this;
   { set g | g in this.groups :: this.groups[g] }
 
   function flatten(nested: set<set<object>>) : set<object>
   { set x | forall y :: y in nested && x in y :: x }
 
   predicate valid()
-    reads this, valid2.reads();
-  {
-    this.notnull() && this.valid2()
-  }
-
-  predicate notnull()
     reads this;
-  { this.net != null && forall g :: g in this.groups ==> this.groups[g] != null }
-
-  predicate valid2()
-    requires this.notnull();
-    reads this, flatten(set g | g in this.groups :: {this.groups[g]} + this.groups[g].valid.reads());
+	reads set g | g in this.groups :: this.groups[g];
+    reads flatten(set x | x in this.groups && this.groups[x] != null :: this.groups[x].valid.reads());
   {
+    this.net != null
     // all groups are valid
-	forall g :: g in this.groups ==> (
+	&& forall g :: g in this.groups ==> (
       this.groups[g] != null && this.groups[g].valid()
       && this.groups[g].interface == this
     )
