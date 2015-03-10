@@ -193,7 +193,8 @@ class Interface // singleton
     reads this;
   { set g | g in this.groups :: this.groups[g] }
 
-  function flatten(nested: set<set<object>>) : set<object>
+  function flatten(nested: set<set<Group>>) : set<Group>
+    reads set x | forall y :: (forall z :: z in nested && y in z) && x in y.valid.reads();
   { set x | forall y :: y in nested && x in y :: x }
 
   predicate valid()
@@ -202,6 +203,7 @@ class Interface // singleton
 	//reads set x | x in this.groups && this.groups[x] != null :: this.groups[x].valid;
 	//reads set x | x in this.groups && this.groups[x] != null :: this.groups[x].valid.reads;
     //reads flatten(set x | x in this.groups && this.groups[x] != null :: this.groups[x].valid.reads());
+	reads if 0 in this.groups && this.groups[0] != null then this.groups[0].valid.reads() else {};
     reads flatten(set x | x in this.groups && this.groups[x] != null :: this.groups[x].read());
   {
     this.net != null
