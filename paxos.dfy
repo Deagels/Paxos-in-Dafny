@@ -60,7 +60,7 @@ class Interface // singleton
 
   constructor Init(net: DummyNetwork, id: int)
     requires net != null
-	  && forall i :: i in net.interfaces ==> net.interfaces[i] != null;
+      && forall i :: i in net.interfaces ==> net.interfaces[i] != null;
     modifies this, net;
     ensures  this.valid() && forall i :: i in net.interfaces ==> net.interfaces[i] != null;
   {
@@ -108,7 +108,7 @@ class Interface // singleton
   method Recieve_Propose(source_ID: int, group_ID: int, slot_ID: int,
     value: int)
     requires this.valid()
-	  && forall i :: i in net.interfaces ==> net.interfaces[i] != null;
+      && forall i :: i in net.interfaces ==> net.interfaces[i] != null;
   {
     // Are we a member of this group & have a proposer for this slot?
     if (group_ID in this.groups) {
@@ -124,7 +124,7 @@ class Interface // singleton
   method Recieve_Promise(source_ID: int, group_ID: int, slot_ID: int,
     round: int, acceptedround: int, acceptedval: int)
     requires this.valid()
-	  && forall i :: i in net.interfaces ==> net.interfaces[i] != null;
+      && forall i :: i in net.interfaces ==> net.interfaces[i] != null;
   {
     // Are we a member of this group & have a proposer for this slot?
     if (group_ID in this.groups) {
@@ -138,7 +138,7 @@ class Interface // singleton
   method Recieve_Prepare(source_ID: int, group_ID: int, slot_ID: int,
     round: int, value: int)
     requires this.valid()
-	  && forall i :: i in net.interfaces ==> net.interfaces[i] != null;
+      && forall i :: i in net.interfaces ==> net.interfaces[i] != null;
   {
     // Are we a member of this group & have an acceptor for this slot?
     if (group_ID in this.groups) {
@@ -154,7 +154,7 @@ class Interface // singleton
   method Recieve_Accept(source_ID: int, group_ID: int, slot_ID: int,
     round: int, value: int)
     requires this.valid()
-	  && forall i :: i in net.interfaces ==> net.interfaces[i] != null;
+      && forall i :: i in net.interfaces ==> net.interfaces[i] != null;
   {
     // Are we a member of this group & have an acceptor for this slot?
     if (group_ID in this.groups) {
@@ -170,7 +170,7 @@ class Interface // singleton
   method Recieve_Learn(source_ID: int, group_ID: int, slot_ID: int,
     round: int, value: int)
     requires this.valid()
-	  && forall i :: i in net.interfaces ==> net.interfaces[i] != null;
+      && forall i :: i in net.interfaces ==> net.interfaces[i] != null;
   {
     // Are we a member of this group & have a learner for this slot?
     if (group_ID in this.groups) {
@@ -189,26 +189,30 @@ class Interface // singleton
 
   method EventLearn(round: int, value: int) {}
 
-  function getGroups() : set<Group>
+  function groups() : set<Group>
     reads this;
   { set g | g in this.groups :: this.groups[g] }
 
+  function groupRead() : set<object>
+    reads this;
+  { set x | x in this.groups && this.groups[x] != null :: this.groups[x].read() }
+
   function flatten(nested: set<set<Group>>) : set<Group>
-    reads set x | forall y :: (forall z :: z in nested && y in z) && x in y.valid.reads();
   { set x | forall y :: y in nested && x in y :: x }
 
   predicate valid()
     reads this;
-	reads set g | g in this.groups :: this.groups[g];
-	//reads set x | x in this.groups && this.groups[x] != null :: this.groups[x].valid;
-	//reads set x | x in this.groups && this.groups[x] != null :: this.groups[x].valid.reads;
+    reads set g | g in this.groups :: this.groups[g];
+    //reads set x | x in this.groups && this.groups[x] != null :: this.groups[x].valid;
+    //reads set x | x in this.groups && this.groups[x] != null :: this.groups[x].valid.reads;
     //reads flatten(set x | x in this.groups && this.groups[x] != null :: this.groups[x].valid.reads());
-	reads if 0 in this.groups && this.groups[0] != null then this.groups[0].valid.reads() else {};
-    reads flatten(set x | x in this.groups && this.groups[x] != null :: this.groups[x].read());
+    reads if 0 in this.groups && this.groups[0] != null then this.groups[0].valid.reads() else {};
+    reads flatten.reads(set x | x in this.groups && this.groups[x] != null :: this.groups[x].read());
+    reads flatten();
   {
     this.net != null
     // all groups are valid
-	&& forall g :: g in this.groups ==> (
+    && forall g :: g in this.groups ==> (
       this.groups[g] != null && this.groups[g].valid()
       && this.groups[g].interface == this
     )
@@ -310,11 +314,11 @@ class Group
     && this.proposers != null
     && this.acceptors != null
     && this.learners  != null
-	&& forall p :: p in this.local_proposers ==>
+    && forall p :: p in this.local_proposers ==>
       (this.local_proposers[p] != null && this.local_proposers[p].valid(this))
-	&& forall a :: a in this.local_acceptors ==>
+    && forall a :: a in this.local_acceptors ==>
       (this.local_acceptors[a] != null && this.local_acceptors[a].valid(this))
-	&& forall l :: l in this.local_learners ==>
+    && forall l :: l in this.local_learners ==>
       (this.local_learners[l] != null && this.local_learners[l].valid(this))
   }
 }
