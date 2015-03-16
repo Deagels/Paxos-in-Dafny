@@ -189,13 +189,16 @@ class Interface // singleton
 
   method EventLearn(round: int, value: int) {}
 
-  function groups() : set<Group>
+  function group() : set<Group>
     reads this;
   { set g | g in this.groups :: this.groups[g] }
 
-  function groupRead() : set<object>
-    reads this;
-  { set x | x in this.groups && this.groups[x] != null :: this.groups[x].read() }
+  function groupRead() : set<object> // exhibits the same problem as valid()
+    reads this, group();
+    reads flatten.reads(set x | x in this.groups && this.groups[x] != null :: this.groups[x].valid.reads());
+  {
+    flatten(set x | x in this.groups && this.groups[x] != null :: this.groups[x].valid.reads())
+  }
 
   function flatten(nested: set<set<Group>>) : set<Group>
   { set x | forall y :: y in nested && x in y :: x }
@@ -207,8 +210,7 @@ class Interface // singleton
     //reads set x | x in this.groups && this.groups[x] != null :: this.groups[x].valid.reads;
     //reads flatten(set x | x in this.groups && this.groups[x] != null :: this.groups[x].valid.reads());
     reads if 0 in this.groups && this.groups[0] != null then this.groups[0].valid.reads() else {};
-    reads flatten.reads(set x | x in this.groups && this.groups[x] != null :: this.groups[x].read());
-    reads flatten();
+    reads flatten(set x | x in this.groups && this.groups[x] != null :: this.groups[x].valid.reads());
   {
     this.net != null
     // all groups are valid
