@@ -195,22 +195,24 @@ class Interface // singleton
 
   function groupRead() : set<object> // exhibits the same problem as valid()
     reads this, group();
-    reads flatten.reads(set x | x in this.groups && this.groups[x] != null :: this.groups[x].valid.reads());
+    reads set x | forall g
+      :: g in this.groups
+      && this.groups[g] != null
+      && x in this.groups[g].valid.reads(); // Error: insufficient reads clause
   {
-    flatten(set x | x in this.groups && this.groups[x] != null :: this.groups[x].valid.reads())
+    set x | forall g
+      :: g in this.groups
+      && this.groups[g] != null
+      && x in this.groups[g].valid.reads()
   }
 
-  function flatten(nested: set<set<Group>>) : set<Group>
-  { set x | forall y :: y in nested && x in y :: x }
-
   predicate valid()
-    reads this;
-    reads set g | g in this.groups :: this.groups[g];
-    //reads set x | x in this.groups && this.groups[x] != null :: this.groups[x].valid;
-    //reads set x | x in this.groups && this.groups[x] != null :: this.groups[x].valid.reads;
-    //reads flatten(set x | x in this.groups && this.groups[x] != null :: this.groups[x].valid.reads());
-    reads if 0 in this.groups && this.groups[0] != null then this.groups[0].valid.reads() else {};
-    reads flatten(set x | x in this.groups && this.groups[x] != null :: this.groups[x].valid.reads());
+    reads this, group();
+    //reads if 0 in this.groups && this.groups[0] != null then this.groups[0].valid.reads() else {}; // this line works
+    reads set x | forall g
+      :: g in this.groups
+      && this.groups[g] != null
+      && x in this.groups[g].valid.reads(); // Error: insufficient reads clause
   {
     this.net != null
     // all groups are valid
