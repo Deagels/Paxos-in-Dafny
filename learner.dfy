@@ -4,12 +4,7 @@ class Learner<T(==)>
   var current:  int; // the highest encountered round number
   var accepted: map<T, set<int>>; // accepted values mapping sets of acceptors that share it
 
-  constructor Init()
-    modifies this;
-  {
-    majority := 0;
-    current  := 0;
-  }
+  constructor () {}
 
   method Learn(id: int, round: int, value: T) returns (learned: bool, ret: T)
     modifies this;
@@ -43,5 +38,6 @@ class Learner<T(==)>
     modifies this;
   {
     majority := num_acceptors/2 + 1;
+	// re-evaluate?
   }
 }

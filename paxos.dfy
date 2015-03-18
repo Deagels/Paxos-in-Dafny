@@ -208,7 +208,9 @@ class Interface // singleton
 
   predicate valid()
     reads this, group();
-    //reads if 0 in this.groups && this.groups[0] != null then this.groups[0].valid.reads() else {}; // this line works
+    reads if 0 in this.groups && this.groups[0] != null
+      then this.groups[0].valid.reads()
+      else {}; // this works
     reads set x | forall g
       :: g in this.groups
       && this.groups[g] != null
