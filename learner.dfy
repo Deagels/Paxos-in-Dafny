@@ -1,32 +1,47 @@
-class Learner
+class Learner<T(==)>
 {
   var majority: int; // half of assumed active acceptors
   var current:  int; // the highest encountered round number
-  var accepted: map<int, set<int>>; // accepted values mapping sets of acceptors that share it
+  var accepted: map<T, set<int>>; // accepted values mapping sets of acceptors that share it
 
-  constructor Init(id: int)
+  constructor Init()
     modifies this;
   {
-    this.current := 0;
+    majority := 0;
+    current  := 0;
   }
 
-  method Learn(id: int, round: int, value: int) returns (val: int)
+  method Learn(id: int, round: int, value: T) returns (learned: bool, ret: T)
     modifies this;
   {
     // is the acceptor up to date?
-    if round >= current {
+    if round > current {
       current := round;
+	  accepted := map[]; // new boys in town. out with the old
+	}
+	if round == current {
       // add acceptor to set
       if value !in accepted {
+        // this is the first occurrance of value
+		// accepted[value] := {id}
         accepted := accepted[ value := {id} ];
       } else {
+        // value already has a set. update with old set union {id}
+		// accepted[value] += {id}
         accepted := accepted[ value := accepted[value] + {id} ];
       }
       // do we have a majority?
       if |accepted[value]| >= majority {
         // yay
+		return true, value;
       }
     }
-    return 0;
+    return false, value;
+  }
+
+  method Configure(num_acceptors: int)
+    modifies this;
+  {
+    current := num_acceptors/2 + 1;
   }
 }
