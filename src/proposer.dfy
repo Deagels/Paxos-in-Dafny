@@ -2,18 +2,21 @@ class Proposer<T(==)>
 {
   var majority:  int; // half of assumed active acceptors
   var round:     int; // current and largest encountered round from acceptors
-  var prepared:  set<int>; // set of answered prepares
+  var prepared:  seq<int>; // set of answered prepares
+  // previously  set<int>;
   var value:     T; // own value or value of acceptor with largest round
 
   constructor () {}
 
   method Promise(id: int, acp_round: int, acp_value: T)
     returns (largest: int, val: T)
+	requires true;
     modifies this;
     ensures round >= acp_round;
   {
     // log response from acceptor
-    prepared := prepared + {id};
+    prepared := prepared + [id];
+	// previously  prepared := prepared + {id};
     // were there any prior proposals?
     if round < acp_round {
       value := acp_value;

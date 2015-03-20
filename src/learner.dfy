@@ -2,7 +2,8 @@ class Learner<T(==)>
 {
   var majority: int; // half of assumed active acceptors
   var current:  int; // the highest encountered round number
-  var accepted: map<T, set<int>>; // accepted values mapping sets of acceptors that share it
+  var accepted: map<T, seq<int>>; // accepted values mapping sets of acceptors that share it
+  // previously map<T, set<int>>;
 
   constructor () {}
 
@@ -19,11 +20,11 @@ class Learner<T(==)>
       if value !in accepted {
         // this is the first occurrance of value
         // accepted[value] := {id}
-        accepted := accepted[ value := {id} ];
+        accepted := accepted[ value := [id] ];
       } else {
         // value already has a set. update with old set union {id}
         // accepted[value] += {id}
-        accepted := accepted[ value := accepted[value] + {id} ];
+        accepted := accepted[ value := accepted[value] + [id] ];
       }
       // do we have a majority?
       if |accepted[value]| >= majority {
