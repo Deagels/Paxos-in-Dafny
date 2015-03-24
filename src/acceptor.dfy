@@ -3,45 +3,55 @@ class Acceptor<T(==)>
   var promise:  int;
   var accepted: Accepted<T>;
 
-  constructor ()
+  constructor (value: T)
     modifies this;
-  { accepted := new Accepted(); }
+	ensures valid();
+  {
+    promise  := -1;
+    accepted := new Accepted(value);
+  }
 
-  method Prepare(round: int, value: T) returns (acp: Accepted<T>)
+  method Prepare(round: int, value: T) returns (ok: bool, acp: Accepted<T>)
 	requires valid();
     modifies this;
 	ensures valid() && promise >= round;
   {
+	acp := accepted;
+	ok  := false;
     // is the round at least as new as our promise
 	// and we have not already accepted it?
     if round >= promise && round != accepted.round {
       promise := round;
 	  assert promise > accepted.round;
 	  // TODO: store state?
-      return accepted;
+	  ok := true;
     }
-	return null;
   }
 
-  method Accept(round: int, value: T) returns (acp: Accepted<T>)
+  method Accept(round: int, value: T) returns (ok: bool, acp: Accepted<T>)
 	requires valid();
     modifies this, accepted;
 	ensures valid() && promise >= round;
   {
+	acp := accepted;
+	ok  := false;
     // is the round at least as new as our promise?
     if round >= promise {
-      promise       := round;
+      promise        := round;
       accepted.round := round;
-      accepted.value   := value;
+      accepted.value := value;
 	  // TODO: store state
-	  return accepted;
+	  ok := true;
     }
-	return null;
   }
 
   method Get() returns (rnd: int, acp: int, val: T)
     requires valid();
-  { return promise, accepted.round, accepted.value; }
+  {
+	rnd := promise;
+	acp := accepted.round;
+	val := accepted.value;
+  }
 
   predicate valid()
     reads this, accepted;
@@ -53,5 +63,8 @@ class Accepted<T(==)>
   var round: int;
   var value: T;
 
-  constructor () {}
+  constructor (val: T)
+    modifies this;
+    ensures round == -1; // yes, this has to be explicitly stated!
+  { round := -1; value := val; }
 }

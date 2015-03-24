@@ -5,7 +5,12 @@ class Learner<T(==)>
   var accepted: map<T, seq<int>>; // accepted values mapping sets of acceptors that share it
   // previously map<T, set<int>>;
 
-  constructor () {}
+  constructor ()
+    modifies this;
+  {
+    majority := 0;
+	current  := -1;
+  }
 
   method Learn(id: int, round: int, value: T) returns (learned: bool, ret: T)
     modifies this;

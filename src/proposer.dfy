@@ -6,7 +6,13 @@ class Proposer<T(==)>
   // previously  set<int>;
   var value:     T; // own value or value of acceptor with largest round
 
-  constructor () {}
+  constructor (rnd: int, val: T)
+    modifies this;
+  {
+    majority := 0;
+    round    := rnd;
+	value    := val;
+  }
 
   method Promise(id: int, acp_round: int, acp_value: T)
     returns (largest: int, val: T)
