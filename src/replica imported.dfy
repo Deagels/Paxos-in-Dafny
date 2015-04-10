@@ -2,10 +2,11 @@ module Proposer {
 	class SingleProposer<T(==)>
 	{
 		var majority:  int; // half of assumed active acceptors
-		var round:     int; // current and largest encountered round from acceptors
+		var round:     int; // current round
+		var value:     T; // own value or value of acceptor with largest round
+		var largest:   int; // largest encountered round from acceptors
 		var prepared:  seq<int>; // set of answered prepares
 		// previously  set<int>;
-		var value:     T; // own value or value of acceptor with largest round
 
 		constructor (rnd: int, val: T)
 			modifies this;
@@ -14,35 +15,36 @@ module Proposer {
 			majority := 0;
 			round    := rnd;
 			value    := val;
+			largest  := -1;
 		}
 
 		method Promise(id: int, acp_round: int, acp_value: T)
-			returns (largest: int, val: T)
-			requires true;
+			returns (ok: bool, large: int, val: T)
 			modifies this;
-			ensures round >= acp_round;
 		{
 			// log response from acceptor
-			prepared := prepared + [id];
-			// previously  prepared := prepared + {id};
-			// were there any prior proposals?
-			if round < acp_round {
-				value := acp_value;
-				round := acp_round;
+			if id !in prepared {
+				prepared := prepared + [id];
 			}
-			assert round >= acp_round;
-			largest, val := Evaluate_majority();
-			return largest, val;
+			// previously prepared := prepared + {id};
+			// were there any prior proposals? adopt round and value
+			if largest < acp_round {
+				largest := acp_round;
+				value   := acp_value;
+			}
+			ok := Evaluate_majority();
+			if round < largest { return ok, largest, value; }
+			else { return ok, round, value; }
 		}
 
-		method Evaluate_majority() returns (rnd: int, val: T)
+		method Evaluate_majority() returns (ok: bool)
 		{
 			// got required majority of acceptors?
 			if |prepared| >= majority {
 				// TODO: store state
-				return round, value;
+				return true;
 			}
-			// else return nothing? 0, 0? 0, null?
+			return false;
 		}
 
 		method Configure(num_acceptors: int)
@@ -147,11 +149,12 @@ module Learner {
 		  then value in accepted && (if learned then |accepted[value]| >= majority else true)
 		  else true;
 	  {
-		// is the acceptor up to date?
+		// are we not up to date?
 		if round > current {
-		  current := round;
+		  current  := round;
 		  accepted := map[]; // new boys in town. out with the old
 		}
+		// is the acceptor up to date?
 		if round == current {
 		  // add acceptor to set
 		  if value !in accepted {
