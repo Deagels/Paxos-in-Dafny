@@ -2,39 +2,57 @@ module Proposer {
 	class SingleProposer<T(==)>
 	{
 		var majority:  int; // half of assumed active acceptors
-		var round:     int; // current round
+		var round:     int; // our current round
 		var value:     T; // own value or value of acceptor with largest round
 		var largest:   int; // largest encountered round from acceptors
-		var prepared:  seq<int>; // set of answered prepares
-		// previously  set<int>;
+		var prepared:  set<int>; // set of answered prepares
+		// previously  set<int>; changed due to bug with Length operator
+
+		ghost var acceptors: map<int, T>; // a map<round, value> of prepared acceptors
 
 		constructor (rnd: int, val: T)
 			modifies this;
 			ensures value == val;
+			ensures valid();
 		{
-			majority := 0;
-			round    := rnd;
-			value    := val;
-			largest  := -1;
+			majority  := 0;
+			round     := rnd;
+			value     := val;
+			largest   := -1;
+			acceptors := map[];
 		}
 
 		method Promise(id: int, acp_round: int, acp_value: T)
 			returns (ok: bool, large: int, val: T)
+			requires valid();
+			// acceptors with equal round have equal value
+			requires (acp_round == largest ==> acp_value == value)
+				&& (acp_round in acceptors ==> acceptors[acp_round] == acp_value);
 			modifies this;
+			ensures  valid();
+			ensures  id in prepared && large == round >= largest >= acp_round;
+			// acceptors with equal round have equal value
+			ensures  (acp_round == largest ==> acp_value == value)
+				&& (acp_round in acceptors ==> acceptors[acp_round] == acp_value);
+			// majority implies no accepted round is > largest encountered
+			ensures  ok ==> (forall rnd :: rnd in acceptors ==> (
+				rnd <= largest
+			));
 		{
 			// log response from acceptor
-			if id !in prepared {
-				prepared := prepared + [id];
-			}
-			// previously prepared := prepared + {id};
-			// were there any prior proposals? adopt round and value
+			prepared  := prepared + {id};
+			acceptors := acceptors[acp_round := acp_value]; // update ghost
+
+			// Any prior accepted proposals? adopt round and value
 			if largest < acp_round {
 				largest := acp_round;
 				value   := acp_value;
 			}
+			// due to round in sent prepare messages, pick the highest round
+			if round < largest { round := largest; }
+
 			ok := Evaluate_majority();
-			if round < largest { return ok, largest, value; }
-			else { return ok, round, value; }
+			return ok, round, value;
 		}
 
 		method Evaluate_majority() returns (ok: bool)
@@ -47,14 +65,33 @@ module Proposer {
 			return false;
 		}
 
-		method Configure(num_acceptors: int)
-			returns (rnd: int, val: T)
+		method Reconfigure(num_acceptors: int)
+			returns (ok: bool, rnd: int, val: T)
+			requires valid();
 			modifies this;
+			ensures valid();
 		{
 			majority := num_acceptors/2 + 1;
-			// re-evaluate |prepared| because we might not get more promises!
-			rnd, val := Evaluate_majority();
-			return rnd, val;
+			// re-evaluate |prepared| because we might NOT get more promises!
+			ok := Evaluate_majority();
+			// due to round in sent prepare messages, pick the highest round
+			if round < largest { return ok, largest, value; }
+			else { return ok, round, value; }
+		}
+
+		method SetMajority(maj: int)
+			requires valid();
+			modifies this;
+			ensures  valid();
+		{ majority := maj; }
+
+		predicate valid()
+			reads this;
+		{
+			// no promised acceptor's round is larger than ours
+			(forall rnd :: rnd in acceptors ==> rnd <= round)
+			// acceptors with equal round have equal value
+			&& (largest in acceptors ==> acceptors[largest] == value)
 		}
 	}
 }
@@ -94,8 +131,8 @@ module Acceptor {
 		requires valid();
 		modifies this, accepted;
 		ensures valid() && promise >= round && if acp != null
-		  then acp.round == round && acp.value == value
-		  else true;
+		  then acp.round == round == promise && acp.value == value
+		  else round < promise;
 	  {
 		// is the round at least as new as our promise?
 		if round >= promise {
@@ -136,45 +173,39 @@ module Acceptor {
 module Learner {
 	class SingleLearner<T(==)>
 	{
-	  var majority: int; // half of assumed active acceptors
-	  var current:  int; // the highest encountered round number
-	  var accepted: map<T, seq<int>>; // accepted values mapping sets of acceptors that share it
-	  // previously map<T, set<int>>;
+		var majority: int; // half of assumed active acceptors
+		var rnd:      int; // the highest encountered round number
+		var val:      T;
+		var accepted: set<int>; // set of acceptors that share current value
+		// previously map<T, set<int>>; // accepted values mapping sets of acceptors that share it
 
-	  constructor () {}
+		constructor () {}
 
-	  method Learn(id: int, round: int, value: T) returns (learned: bool, ret: T)
-		modifies this;
-		ensures current >= round && if round == current
-		  then value in accepted && (if learned then |accepted[value]| >= majority else true)
-		  else true;
-	  {
-		// are we not up to date?
-		if round > current {
-		  current  := round;
-		  accepted := map[]; // new boys in town. out with the old
+		method Learn(id: int, acp_rnd: int, acp_val: T) returns (learned: bool, ret: T)
+			modifies this;
+			ensures rnd >= acp_rnd && if acp_val == val
+				then id in accepted && (if learned then |accepted| >= majority else true)
+				else true;
+		{
+			// are we not up to date?
+			if acp_rnd > rnd {
+				rnd := acp_rnd;
+				// if new acp_val, out with the old
+				if acp_val != val {
+					val      := acp_val;
+					accepted := {};
+				}
+			}
+			// does the acceptor agree?
+			if acp_val == val {
+				// add acceptor to set
+				accepted := accepted + {id};
+				// do we have a majority?
+				if |accepted| >= majority { return true, acp_val; }
+				assert id in accepted;
+			}
+			return false, acp_val;
 		}
-		// is the acceptor up to date?
-		if round == current {
-		  // add acceptor to set
-		  if value !in accepted {
-			// this is the first occurrance of value
-			// accepted[value] := {id}
-			accepted := accepted[ value := [id] ];
-		  } else {
-			// value already has a set. update with old set union {id}
-			// accepted[value] += {id}
-			accepted := accepted[ value := accepted[value] + [id] ];
-		  }
-		  // do we have a majority?
-		  if |accepted[value]| >= majority {
-			// yay
-			return true, value;
-		  }
-		  assert value in accepted;
-		}
-		return false, value;
-	  }
 	}
 }
 
@@ -208,39 +239,55 @@ module Replica {
 			requires this.proposer == null && this.acceptor == null && this.learner == null;
 			modifies this, this.proposer, this.learner;
 			ensures acceptor == null || acceptor.valid();
+			ensures proposer == null || proposer.valid();
 		{
 			consensus := 0;
-			var state := 0; // the state of this.acceptor. 0=null, 1=valid
+			var state_pro := false; // the state of this.proposer
+			var state_acp := false; // the state of this.acceptor
+			// false ==> null, true ==> valid
 			this.self := self;
 			this.val  := val;
 			if ( roles >= 100 ) {
 				proposer := new SingleProposer<T>( -1, val );
+				state_pro := true;
+				assert proposer.valid();
 			}
 			assert acceptor == null;
 			var roles := roles % 100;
 			if ( roles >= 10 ) {
 				acceptor := new SingleAcceptor<T>( val );
-				state := 1;
+				state_acp := true;
 				assert acceptor != null && acceptor.valid();
-				AddAcceptor( id, self, state );
+				AddAcceptor( id, self, state_pro, state_acp );
 				assert acceptor != null && acceptor.valid();
 			}
+			assert proposer == null || proposer.valid();
 			roles := roles % 10;
 			if (roles >= 1) {
 				learner := new SingleLearner<T>();
-				AddLearner( id, self, state );
+				AddLearner( id, self, state_acp );
 			}
 		}
 
 		method Promise(id: int, acp_round: int, acp_value: T)
-			returns (largest: int, val: T)
+			returns (ok: bool, largest: int, val: T)
+			requires valid( proposer != null, acceptor != null);
+			requires proposer != null ==> (
+				proposer.valid()
+				// acceptors with equal round have equal value
+				&& (acp_round == proposer.largest ==> acp_value == proposer.value)
+				&& (acp_round in proposer.acceptors ==> proposer.acceptors[acp_round] == acp_value)
+			);
 			modifies this.proposer;
-			ensures proposer == null || proposer.round >= acp_round;
+			ensures  proposer == null || ok ==> proposer.round >= acp_round;
+			ensures  valid( proposer != null, acceptor != null);
 		{
+			ok, largest, val := false, -1, acp_value;
 			if proposer != null {
-				var largest, val := proposer.Promise(id, acp_round, acp_value);
-				return largest, val;
+				ok, largest, val := proposer.Promise(id, acp_round, acp_value);
+				assert ok ==> largest >= acp_round;
 			}
+			return ok, largest, val;
 		}
 
 		method Prepare(round: int, value: T) returns (acp: Accepted<T>)
@@ -274,6 +321,7 @@ module Replica {
 
 		method Learn(id: int, round: int, value: T) returns (learned: bool, ret: T)
 			modifies this.learner;
+			// the final proof
 			ensures if learned
 			  then consensus >= majority
 			  else consensus < majority;
@@ -283,42 +331,50 @@ module Replica {
 			}
 		}
 
-		method AddAcceptor(id: int, addr: EndPoint, state: int)
-			requires (state == 0 && acceptor == null)
-			      || (state == 1 && acceptor != null && acceptor.valid());
+		method AddAcceptor(id: int, addr: EndPoint, state_pro: bool, state_acp: bool)
+			requires valid(state_pro, state_acp);
 			modifies this, this.proposer, this.learner;
-			ensures  (state == 0 && acceptor == null)
-			      || (state == 1 && acceptor != null && acceptor.valid());
+			ensures  valid(state_pro, state_acp);
 		{
-			ghost var state2 := false;
-			if acceptor != null { ghost var state2 := true; }
 			acceptors := acceptors[id := addr];
-			Configure( |acceptors|, state );
-			// add to ghost map
-			var acp := new SingleAcceptor<T>( this.val );
-			ghostacp := ghostacp[id := acp];
-			if state2 { assert acceptor.valid(); }
+			Configure( |acceptors|, state_pro, state_acp );
 		}
 
-		method AddLearner(id: int, addr: EndPoint, state: int)
-			requires (state == 0 && acceptor == null)
-			      || (state == 1 && acceptor != null && acceptor.valid());
+		method AddLearner(id: int, addr: EndPoint, state_acp: bool)
+			requires if state_acp
+				then acceptor != null && acceptor.valid()
+				else acceptor == null;
 			modifies this;
-			ensures  (state == 0 && acceptor == null)
-			      || (state == 1 && acceptor != null && acceptor.valid());
+			ensures  if state_acp
+				then acceptor != null && acceptor.valid()
+				else acceptor == null;
 		{ learners := learners[id := addr]; }
 
-		method Configure(num_acps: int, state: int)
-			requires (state == 0 && acceptor == null)
-			      || (state == 1 && acceptor != null && acceptor.valid());
+		method Configure(num_acps: int, state_pro: bool, state_acp: bool)
+			requires valid(state_pro, state_acp);
 			modifies this, this.proposer, this.learner;
-			ensures  (state == 0 && acceptor == null)
-			      || (state == 1 && acceptor != null && acceptor.valid());
+			ensures  valid(state_pro, state_acp);
 		{
 			this.majority := num_acps/2 + 1;
-			if (proposer != null) { proposer.majority := this.majority; }
+			if state_pro {
+				proposer.SetMajority( majority );
+			}
 			// TODO: re-evaluate proposer's |prepared| because we might not get more promises!
-			if (learner  != null) { learner.majority  := this.majority; }
+			if (learner  != null) {
+				learner.majority  := this.majority;
+			}
+		}
+
+		predicate valid(state_pro: bool, state_acp: bool)
+			reads this, this.proposer, this.acceptor,
+				if this.acceptor != null then this.acceptor.accepted else null;
+		{
+			(if state_pro
+				then proposer != null && proposer.valid()
+				else proposer == null)
+			&& (if state_acp
+				then acceptor != null && acceptor.valid()
+				else acceptor == null)
 		}
 	}
 }
