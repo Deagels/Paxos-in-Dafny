@@ -37,7 +37,7 @@ module Proposer {
 			// majority implies no accepted round is > largest encountered
 			ensures  ok ==> (forall rnd :: rnd in acceptors ==> (
 				rnd <= largest
-			));
+			) && |prepared| >= majority);
 		{
 			// log response from acceptor
 			prepared  := prepared + {id};
