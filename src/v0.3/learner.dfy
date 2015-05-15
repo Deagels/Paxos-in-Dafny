@@ -1,49 +1,38 @@
-class Learner<T(==)>
-{
-  var majority: int; // half of assumed active acceptors
-  var current:  int; // the highest encountered round number
-  var accepted: map<T, seq<int>>; // accepted values mapping sets of acceptors that share it
-  // previously map<T, set<int>>;
-
-  constructor ()
-    modifies this;
+module Learner {
+  class SingleLearner<T(==)>
   {
-    majority := 0;
-	current  := -1;
-  }
+    var majority: int; // half of assumed active acceptors
+    var rnd:      int; // the highest encountered round number
+    var val:      T;
+    var accepted: set<int>; // set of acceptors that share current value
+    // previously map<T, set<int>>; // accepted values mapping sets of acceptors that share it
 
-  method Learn(id: int, round: int, value: T) returns (learned: bool, ret: T)
-    modifies this;
-  {
-    // is the acceptor up to date?
-    if round > current {
-      current := round;
-      accepted := map[]; // new boys in town. out with the old
-    }
-    if round == current {
-      // add acceptor to set
-      if value !in accepted {
-        // this is the first occurrance of value
-        // accepted[value] := {id}
-        accepted := accepted[ value := [id] ];
-      } else {
-        // value already has a set. update with old set union {id}
-        // accepted[value] += {id}
-        accepted := accepted[ value := accepted[value] + [id] ];
+    constructor () {}
+
+    method Learn(id: int, acp_rnd: int, acp_val: T) returns (learned: bool, ret: T)
+      modifies this;
+      ensures rnd >= acp_rnd && if acp_val == val
+        then id in accepted && (if learned then |accepted| >= majority else true)
+        else true;
+    {
+      // are we not up to date?
+      if acp_rnd > rnd {
+        rnd := acp_rnd;
+        // if new acp_val, out with the old
+        if acp_val != val {
+          val      := acp_val;
+          accepted := {};
+        }
       }
-      // do we have a majority?
-      if |accepted[value]| >= majority {
-        // yay
-        return true, value;
+      // does the acceptor agree?
+      if acp_val == val {
+        // add acceptor to set
+        accepted := accepted + {id};
+        // do we have a majority?
+        if |accepted| >= majority { return true, acp_val; }
+        assert id in accepted;
       }
+      return false, acp_val;
     }
-    return false, value;
-  }
-
-  method Configure(num_acceptors: int)
-    modifies this;
-  {
-    majority := num_acceptors/2 + 1;
-	// re-evaluate?
   }
 }
